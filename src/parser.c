@@ -48,6 +48,7 @@ static int consume(Parser *parser, TokenType type, const char *message) {
 }
 
 static Expr *expression(Parser *parser);
+static Stmt *inner_statement(Parser *parser);
 
 static Expr *primary(Parser *parser) {
     if (match(parser, TOKEN_NUMBER)) {
@@ -123,58 +124,68 @@ static Expr *expression(Parser *parser) {
     return term(parser);
 }
 
-static Stmt *statement(Parser *parser) {
-    if (match(parser, TOKEN_LET)) {
-        char *name;
-        Expr *value;
-        Stmt *stmt;
+static Stmt *seed_statement(Parser *parser) {
+    char *name;
+    Expr *value;
+    Stmt *stmt;
 
-        if (!consume(parser, TOKEN_IDENTIFIER, "Expected variable name after 'let'.")) {
-            return NULL;
-        }
+    if (!consume(parser, TOKEN_IDENTIFIER, "Expected seed name after 'seed'.")) {
+        return NULL;
+    }
 
-        name = atlas_strdup(parser->previous.lexeme);
-        if (name == NULL) {
-            parser_error(parser, "Out of memory while reading variable name.");
-            return NULL;
-        }
+    name = atlas_strdup(parser->previous.lexeme);
+    if (name == NULL) {
+        parser_error(parser, "Out of memory while reading seed name.");
+        return NULL;
+    }
 
-        if (!consume(parser, TOKEN_EQUAL, "Expected '=' after variable name.")) {
-            free(name);
-            return NULL;
-        }
-
-        value = expression(parser);
-        if (value == NULL) {
-            free(name);
-            return NULL;
-        }
-
-        if (!consume(parser, TOKEN_SEMICOLON, "Expected ';' after declaration.")) {
-            expr_free(value);
-            free(name);
-            return NULL;
-        }
-
-        stmt = stmt_let_new(name, value);
+    if (!consume(parser, TOKEN_ARROW, "Expected '<-' after seed name.")) {
         free(name);
-        return stmt;
+        return NULL;
     }
 
-    if (match(parser, TOKEN_PRINT)) {
-        Expr *value = expression(parser);
-        Stmt *stmt;
-        if (value == NULL) {
-            return NULL;
-        }
-        if (!consume(parser, TOKEN_SEMICOLON, "Expected ';' after print statement.")) {
-            expr_free(value);
-            return NULL;
-        }
-        stmt = stmt_print_new(value);
-        return stmt;
+    value = expression(parser);
+    if (value == NULL) {
+        free(name);
+        return NULL;
     }
 
+    if (!consume(parser, TOKEN_SEMICOLON, "Expected ';' after seed declaration.")) {
+        expr_free(value);
+        free(name);
+        return NULL;
+    }
+
+    stmt = stmt_seed_new(name, value);
+    free(name);
+    return stmt;
+}
+
+static Stmt *ignite_statement(Parser *parser) {
+    char *name;
+    Stmt *stmt;
+
+    if (!consume(parser, TOKEN_IDENTIFIER, "Expected globe name after 'ignite'.")) {
+        return NULL;
+    }
+
+    name = atlas_strdup(parser->previous.lexeme);
+    if (name == NULL) {
+        parser_error(parser, "Out of memory while reading globe name.");
+        return NULL;
+    }
+
+    if (!consume(parser, TOKEN_SEMICOLON, "Expected ';' after ignite statement.")) {
+        free(name);
+        return NULL;
+    }
+
+    stmt = stmt_ignite_new(name);
+    free(name);
+    return stmt;
+}
+
+static Stmt *assignment_or_expression(Parser *parser) {
     if (match(parser, TOKEN_IDENTIFIER)) {
         char *name = atlas_strdup(parser->previous.lexeme);
         if (name == NULL) {
@@ -182,7 +193,7 @@ static Stmt *statement(Parser *parser) {
             return NULL;
         }
 
-        if (match(parser, TOKEN_EQUAL)) {
+        if (match(parser, TOKEN_ARROW)) {
             Expr *value = expression(parser);
             Stmt *stmt;
             if (value == NULL) {
@@ -200,7 +211,7 @@ static Stmt *statement(Parser *parser) {
         }
 
         free(name);
-        parser_error(parser, "Expected '=' after identifier.");
+        parser_error(parser, "Expected '<-' after identifier.");
         return NULL;
     }
 
@@ -219,6 +230,100 @@ static Stmt *statement(Parser *parser) {
     }
 }
 
+static Stmt *inner_statement(Parser *parser) {
+    if (match(parser, TOKEN_SEED)) {
+        return seed_statement(parser);
+    }
+
+    if (match(parser, TOKEN_ECHO)) {
+        Expr *value = expression(parser);
+        Stmt *stmt;
+        if (value == NULL) {
+            return NULL;
+        }
+        if (!consume(parser, TOKEN_SEMICOLON, "Expected ';' after echo statement.")) {
+            expr_free(value);
+            return NULL;
+        }
+        stmt = stmt_echo_new(value);
+        return stmt;
+    }
+
+    if (match(parser, TOKEN_IGNITE)) {
+        return ignite_statement(parser);
+    }
+
+    return assignment_or_expression(parser);
+}
+
+static Stmt *globe_declaration(Parser *parser) {
+    char *name;
+    Block body;
+    Stmt *stmt;
+
+    if (!consume(parser, TOKEN_IDENTIFIER, "Expected globe name after 'globe'.")) {
+        return NULL;
+    }
+
+    name = atlas_strdup(parser->previous.lexeme);
+    if (name == NULL) {
+        parser_error(parser, "Out of memory while reading globe name.");
+        return NULL;
+    }
+
+    if (!consume(parser, TOKEN_LBRACE, "Expected '{' to start globe body.")) {
+        free(name);
+        return NULL;
+    }
+
+    block_init(&body);
+
+    while (!check(parser, TOKEN_RBRACE) && !check(parser, TOKEN_EOF)) {
+        Stmt *inner = inner_statement(parser);
+        if (inner == NULL) {
+            block_free(&body);
+            free(name);
+            return NULL;
+        }
+        if (!block_push(&body, inner)) {
+            stmt_free(inner);
+            block_free(&body);
+            parser_error(parser, "Out of memory while building globe body.");
+            free(name);
+            return NULL;
+        }
+    }
+
+    if (!consume(parser, TOKEN_RBRACE, "Expected '}' after globe body.")) {
+        block_free(&body);
+        free(name);
+        return NULL;
+    }
+
+    stmt = stmt_globe_new(name, &body);
+    free(name);
+    if (stmt == NULL) {
+        block_free(&body);
+        parser_error(parser, "Out of memory while building globe declaration.");
+        return NULL;
+    }
+
+    return stmt;
+}
+
+static Stmt *top_level_statement(Parser *parser) {
+    if (match(parser, TOKEN_GLOBE)) {
+        return globe_declaration(parser);
+    }
+
+    if (match(parser, TOKEN_IGNITE)) {
+        return ignite_statement(parser);
+    }
+
+    parser_error(parser, "Top-level only allows 'globe' and 'ignite'.");
+    return NULL;
+}
+
 void parser_init(Parser *parser, const char *source) {
     memset(parser, 0, sizeof(*parser));
     lexer_init(&parser->lexer, source);
@@ -235,7 +340,7 @@ int parser_parse(Parser *parser, Program *program) {
     program_init(program);
 
     while (!check(parser, TOKEN_EOF)) {
-        Stmt *stmt = statement(parser);
+        Stmt *stmt = top_level_statement(parser);
         if (stmt == NULL) {
             program_free(program);
             return 0;

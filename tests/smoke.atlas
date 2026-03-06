@@ -1,8 +1,12 @@
-let a = 10;
-let b = 5;
-print a + b;
-print a - b;
-print a * b;
-print a / b;
-a = a + 1;
-print a;
+globe arithmetic {
+	seed a <- 10;
+	seed b <- 5;
+	echo a + b;
+	echo a - b;
+	echo a * b;
+	echo a / b;
+	a <- a + 1;
+	echo a;
+}
+
+ignite arithmetic;

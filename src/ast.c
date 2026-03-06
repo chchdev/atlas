@@ -75,19 +75,61 @@ void expr_free(Expr *expr) {
     free(expr);
 }
 
-Stmt *stmt_let_new(const char *name, Expr *value) {
+Stmt *stmt_globe_new(const char *name, Block *body) {
+    Stmt *stmt = (Stmt *)calloc(1, sizeof(Stmt));
+
+    if (stmt == NULL) {
+        return NULL;
+    }
+
+    stmt->type = STMT_GLOBE;
+    stmt->as.globe_stmt.name = atlas_strdup(name);
+    block_init(&stmt->as.globe_stmt.body);
+
+    if (stmt->as.globe_stmt.name == NULL) {
+        free(stmt);
+        return NULL;
+    }
+
+    stmt->as.globe_stmt.body = *body;
+    body->items = NULL;
+    body->count = 0;
+    body->capacity = 0;
+
+    return stmt;
+}
+
+Stmt *stmt_ignite_new(const char *name) {
     Stmt *stmt = (Stmt *)calloc(1, sizeof(Stmt));
     if (stmt == NULL) {
         return NULL;
     }
-    stmt->type = STMT_LET;
-    stmt->as.let_stmt.name = atlas_strdup(name);
-    stmt->as.let_stmt.value = value;
-    if (stmt->as.let_stmt.name == NULL) {
+
+    stmt->type = STMT_IGNITE;
+    stmt->as.ignite_stmt.name = atlas_strdup(name);
+    if (stmt->as.ignite_stmt.name == NULL) {
+        free(stmt);
+        return NULL;
+    }
+
+    return stmt;
+}
+
+Stmt *stmt_seed_new(const char *name, Expr *value) {
+    Stmt *stmt = (Stmt *)calloc(1, sizeof(Stmt));
+    if (stmt == NULL) {
+        return NULL;
+    }
+
+    stmt->type = STMT_SEED;
+    stmt->as.seed_stmt.name = atlas_strdup(name);
+    stmt->as.seed_stmt.value = value;
+    if (stmt->as.seed_stmt.name == NULL) {
         expr_free(value);
         free(stmt);
         return NULL;
     }
+
     return stmt;
 }
 
@@ -107,13 +149,13 @@ Stmt *stmt_assign_new(const char *name, Expr *value) {
     return stmt;
 }
 
-Stmt *stmt_print_new(Expr *value) {
+Stmt *stmt_echo_new(Expr *value) {
     Stmt *stmt = (Stmt *)calloc(1, sizeof(Stmt));
     if (stmt == NULL) {
         return NULL;
     }
-    stmt->type = STMT_PRINT;
-    stmt->as.print_stmt.value = value;
+    stmt->type = STMT_ECHO;
+    stmt->as.echo_stmt.value = value;
     return stmt;
 }
 
@@ -133,16 +175,23 @@ void stmt_free(Stmt *stmt) {
     }
 
     switch (stmt->type) {
-        case STMT_LET:
-            free(stmt->as.let_stmt.name);
-            expr_free(stmt->as.let_stmt.value);
+        case STMT_GLOBE:
+            free(stmt->as.globe_stmt.name);
+            block_free(&stmt->as.globe_stmt.body);
+            break;
+        case STMT_IGNITE:
+            free(stmt->as.ignite_stmt.name);
+            break;
+        case STMT_SEED:
+            free(stmt->as.seed_stmt.name);
+            expr_free(stmt->as.seed_stmt.value);
             break;
         case STMT_ASSIGN:
             free(stmt->as.assign_stmt.name);
             expr_free(stmt->as.assign_stmt.value);
             break;
-        case STMT_PRINT:
-            expr_free(stmt->as.print_stmt.value);
+        case STMT_ECHO:
+            expr_free(stmt->as.echo_stmt.value);
             break;
         case STMT_EXPR:
             expr_free(stmt->as.expr_stmt.value);
@@ -154,36 +203,48 @@ void stmt_free(Stmt *stmt) {
     free(stmt);
 }
 
-void program_init(Program *program) {
-    program->items = NULL;
-    program->count = 0;
-    program->capacity = 0;
+void block_init(Block *block) {
+    block->items = NULL;
+    block->count = 0;
+    block->capacity = 0;
 }
 
-int program_push(Program *program, Stmt *stmt) {
-    if (program->count == program->capacity) {
-        size_t new_capacity = program->capacity == 0 ? 8 : program->capacity * 2;
-        Stmt **new_items = (Stmt **)realloc(program->items, new_capacity * sizeof(Stmt *));
+int block_push(Block *block, Stmt *stmt) {
+    if (block->count == block->capacity) {
+        size_t new_capacity = block->capacity == 0 ? 8 : block->capacity * 2;
+        Stmt **new_items = (Stmt **)realloc(block->items, new_capacity * sizeof(Stmt *));
         if (new_items == NULL) {
             return 0;
         }
-        program->items = new_items;
-        program->capacity = new_capacity;
+        block->items = new_items;
+        block->capacity = new_capacity;
     }
 
-    program->items[program->count++] = stmt;
+    block->items[block->count++] = stmt;
     return 1;
 }
 
-void program_free(Program *program) {
+void block_free(Block *block) {
     size_t i;
 
-    for (i = 0; i < program->count; ++i) {
-        stmt_free(program->items[i]);
+    for (i = 0; i < block->count; ++i) {
+        stmt_free(block->items[i]);
     }
 
-    free(program->items);
-    program->items = NULL;
-    program->count = 0;
-    program->capacity = 0;
+    free(block->items);
+    block->items = NULL;
+    block->count = 0;
+    block->capacity = 0;
+}
+
+void program_init(Program *program) {
+    block_init(program);
+}
+
+int program_push(Program *program, Stmt *stmt) {
+    return block_push(program, stmt);
+}
+
+void program_free(Program *program) {
+    block_free(program);
 }

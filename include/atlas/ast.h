@@ -30,39 +30,51 @@ struct Expr {
 };
 
 typedef enum {
-    STMT_LET,
+    STMT_GLOBE,
+    STMT_IGNITE,
+    STMT_SEED,
     STMT_ASSIGN,
-    STMT_PRINT,
+    STMT_ECHO,
     STMT_EXPR
 } StmtType;
 
 typedef struct Stmt Stmt;
+typedef struct Block Block;
+
+struct Block {
+    Stmt **items;
+    size_t count;
+    size_t capacity;
+};
 
 struct Stmt {
     StmtType type;
     union {
         struct {
             char *name;
+            Block body;
+        } globe_stmt;
+        struct {
+            char *name;
+        } ignite_stmt;
+        struct {
+            char *name;
             Expr *value;
-        } let_stmt;
+        } seed_stmt;
         struct {
             char *name;
             Expr *value;
         } assign_stmt;
         struct {
             Expr *value;
-        } print_stmt;
+        } echo_stmt;
         struct {
             Expr *value;
         } expr_stmt;
     } as;
 };
 
-typedef struct {
-    Stmt **items;
-    size_t count;
-    size_t capacity;
-} Program;
+typedef Block Program;
 
 Expr *expr_number_new(double value);
 Expr *expr_variable_new(const char *name);
@@ -70,11 +82,17 @@ Expr *expr_binary_new(char op, Expr *left, Expr *right);
 Expr *expr_unary_new(char op, Expr *right);
 void expr_free(Expr *expr);
 
-Stmt *stmt_let_new(const char *name, Expr *value);
+Stmt *stmt_globe_new(const char *name, Block *body);
+Stmt *stmt_ignite_new(const char *name);
+Stmt *stmt_seed_new(const char *name, Expr *value);
 Stmt *stmt_assign_new(const char *name, Expr *value);
-Stmt *stmt_print_new(Expr *value);
+Stmt *stmt_echo_new(Expr *value);
 Stmt *stmt_expr_new(Expr *value);
 void stmt_free(Stmt *stmt);
+
+void block_init(Block *block);
+int block_push(Block *block, Stmt *stmt);
+void block_free(Block *block);
 
 void program_init(Program *program);
 int program_push(Program *program, Stmt *stmt);

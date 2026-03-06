@@ -94,7 +94,7 @@ static void run_repl(Environment *env) {
     char line[2048];
 
     puts("Atlas REPL");
-    puts("Type statements ending in ';'. Use Ctrl+C to exit.");
+    puts("Type Atlas snippets using globe syntax. Use Ctrl+C to exit.");
 
     while (fgets(line, sizeof(line), stdin) != NULL) {
         if (line[0] == '\n' || line[0] == '\0') {

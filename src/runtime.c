@@ -5,8 +5,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "atlas/util.h"
-
 static int runtime_error(Runtime *runtime, const char *message) {
     runtime->had_error = 1;
     snprintf(runtime->error_message, sizeof(runtime->error_message), "%s", message);
@@ -57,10 +55,12 @@ int env_define(Environment *env, const char *name, double value) {
         env->capacity = new_capacity;
     }
 
-    env->items[env->count].name = atlas_strdup(name);
+    env->items[env->count].name = (char *)malloc(strlen(name) + 1);
     if (env->items[env->count].name == NULL) {
         return 0;
     }
+    strcpy(env->items[env->count].name, name);
+
     env->items[env->count].value = value;
     env->count++;
     return 1;
@@ -89,6 +89,11 @@ void runtime_init(Runtime *runtime) {
     runtime->error_message[0] = '\0';
 }
 
+typedef struct {
+    const char *name;
+    const Block *body;
+} GlobeEntry;
+
 static int eval_expr(Runtime *runtime, Environment *env, const Expr *expr, double *result) {
     if (expr == NULL) {
         return runtime_error(runtime, "Internal error: null expression.");
@@ -102,7 +107,7 @@ static int eval_expr(Runtime *runtime, Environment *env, const Expr *expr, doubl
         case EXPR_VARIABLE:
             if (!env_get(env, expr->as.name, result)) {
                 char buffer[256];
-                snprintf(buffer, sizeof(buffer), "Undefined variable '%s'.", expr->as.name);
+                snprintf(buffer, sizeof(buffer), "Unknown seed '%s'.", expr->as.name);
                 return runtime_error(runtime, buffer);
             }
             return 1;
@@ -156,55 +161,166 @@ static int eval_expr(Runtime *runtime, Environment *env, const Expr *expr, doubl
     }
 }
 
-int runtime_execute_program(Runtime *runtime, Environment *env, const Program *program) {
+static const GlobeEntry *find_globe(const GlobeEntry *globes, size_t count, const char *name) {
     size_t i;
-    for (i = 0; i < program->count; ++i) {
-        const Stmt *stmt = program->items[i];
+    for (i = 0; i < count; ++i) {
+        if (strcmp(globes[i].name, name) == 0) {
+            return &globes[i];
+        }
+    }
+    return NULL;
+}
+
+static int execute_block(
+    Runtime *runtime,
+    const GlobeEntry *globes,
+    size_t globe_count,
+    const Block *block,
+    int depth
+);
+
+static int execute_ignite(
+    Runtime *runtime,
+    const GlobeEntry *globes,
+    size_t globe_count,
+    const char *name,
+    int depth
+) {
+    const GlobeEntry *target;
+
+    if (depth > 64) {
+        return runtime_error(runtime, "Globe recursion limit reached.");
+    }
+
+    target = find_globe(globes, globe_count, name);
+    if (target == NULL) {
+        char buffer[256];
+        snprintf(buffer, sizeof(buffer), "No globe named '%s' exists.", name);
+        return runtime_error(runtime, buffer);
+    }
+
+    return execute_block(runtime, globes, globe_count, target->body, depth + 1);
+}
+
+static int execute_block(
+    Runtime *runtime,
+    const GlobeEntry *globes,
+    size_t globe_count,
+    const Block *block,
+    int depth
+) {
+    size_t i;
+    Environment env;
+
+    env_init(&env);
+
+    for (i = 0; i < block->count; ++i) {
+        const Stmt *stmt = block->items[i];
         double value = 0.0;
 
         switch (stmt->type) {
-            case STMT_LET:
-                if (!eval_expr(runtime, env, stmt->as.let_stmt.value, &value)) {
+            case STMT_SEED:
+                if (!eval_expr(runtime, &env, stmt->as.seed_stmt.value, &value)) {
+                    env_free(&env);
                     return 0;
                 }
-                if (!env_define(env, stmt->as.let_stmt.name, value)) {
-                    return runtime_error(runtime, "Failed to define variable.");
+                if (!env_define(&env, stmt->as.seed_stmt.name, value)) {
+                    env_free(&env);
+                    return runtime_error(runtime, "Failed to create seed.");
                 }
                 break;
 
             case STMT_ASSIGN:
-                if (!eval_expr(runtime, env, stmt->as.assign_stmt.value, &value)) {
+                if (!eval_expr(runtime, &env, stmt->as.assign_stmt.value, &value)) {
+                    env_free(&env);
                     return 0;
                 }
-                if (!env_assign(env, stmt->as.assign_stmt.name, value)) {
+                if (!env_assign(&env, stmt->as.assign_stmt.name, value)) {
                     char buffer[256];
-                    snprintf(
-                        buffer,
-                        sizeof(buffer),
-                        "Cannot assign to undefined variable '%s'.",
-                        stmt->as.assign_stmt.name
-                    );
+                    snprintf(buffer, sizeof(buffer), "Cannot rebind unknown seed '%s'.", stmt->as.assign_stmt.name);
+                    env_free(&env);
                     return runtime_error(runtime, buffer);
                 }
                 break;
 
-            case STMT_PRINT:
-                if (!eval_expr(runtime, env, stmt->as.print_stmt.value, &value)) {
+            case STMT_ECHO:
+                if (!eval_expr(runtime, &env, stmt->as.echo_stmt.value, &value)) {
+                    env_free(&env);
                     return 0;
                 }
                 printf("%.15g\n", value);
                 break;
 
             case STMT_EXPR:
-                if (!eval_expr(runtime, env, stmt->as.expr_stmt.value, &value)) {
+                if (!eval_expr(runtime, &env, stmt->as.expr_stmt.value, &value)) {
+                    env_free(&env);
+                    return 0;
+                }
+                break;
+
+            case STMT_IGNITE:
+                if (!execute_ignite(runtime, globes, globe_count, stmt->as.ignite_stmt.name, depth)) {
+                    env_free(&env);
                     return 0;
                 }
                 break;
 
             default:
-                return runtime_error(runtime, "Unknown statement type.");
+                env_free(&env);
+                return runtime_error(runtime, "Unsupported statement inside globe.");
         }
     }
 
+    env_free(&env);
+    return 1;
+}
+
+int runtime_execute_program(Runtime *runtime, Environment *env, const Program *program) {
+    GlobeEntry *globes = NULL;
+    size_t globe_count = 0;
+    size_t globe_capacity = 0;
+    size_t i;
+
+    (void)env;
+
+    for (i = 0; i < program->count; ++i) {
+        const Stmt *stmt = program->items[i];
+
+        if (stmt->type == STMT_GLOBE) {
+            if (globe_count == globe_capacity) {
+                size_t new_capacity = globe_capacity == 0 ? 8 : globe_capacity * 2;
+                GlobeEntry *new_globes = (GlobeEntry *)realloc(globes, new_capacity * sizeof(GlobeEntry));
+                if (new_globes == NULL) {
+                    free(globes);
+                    return runtime_error(runtime, "Out of memory while storing globes.");
+                }
+                globes = new_globes;
+                globe_capacity = new_capacity;
+            }
+
+            if (find_globe(globes, globe_count, stmt->as.globe_stmt.name) != NULL) {
+                char buffer[256];
+                snprintf(buffer, sizeof(buffer), "Duplicate globe '%s'.", stmt->as.globe_stmt.name);
+                free(globes);
+                return runtime_error(runtime, buffer);
+            }
+
+            globes[globe_count].name = stmt->as.globe_stmt.name;
+            globes[globe_count].body = &stmt->as.globe_stmt.body;
+            globe_count++;
+        }
+    }
+
+    for (i = 0; i < program->count; ++i) {
+        const Stmt *stmt = program->items[i];
+        if (stmt->type == STMT_IGNITE) {
+            if (!execute_ignite(runtime, globes, globe_count, stmt->as.ignite_stmt.name, 0)) {
+                free(globes);
+                return 0;
+            }
+        }
+    }
+
+    free(globes);
     return 1;
 }

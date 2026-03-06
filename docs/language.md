@@ -6,26 +6,44 @@ Atlas is a small interpreted language implemented in C.
 
 Every statement ends with `;`.
 
-### Variables
+Atlas is globe-first: code runs only by igniting globes.
 
-Declare with `let`:
+### Globes
+
+Define a globe using braces:
 
 ```atlas
-let x = 10;
-let y = x + 2;
+globe origin {
+	echo 42;
+}
 ```
 
-Assign to an existing variable:
+Run it with `ignite`:
 
 ```atlas
-x = x + 1;
+ignite origin;
 ```
 
-### Print
+### Seeds (Variables)
+
+Create a seed with `seed` and `<-`:
 
 ```atlas
-print x;
-print x + y;
+seed x <- 10;
+seed y <- x + 2;
+```
+
+Rebind an existing seed:
+
+```atlas
+x <- x + 1;
+```
+
+### Echo
+
+```atlas
+echo x;
+echo x + y;
 ```
 
 ### Expressions
@@ -47,6 +65,7 @@ Operator precedence:
 
 ## Notes
 
-- Variables are numeric (`double`) values.
-- Assignment requires the variable to already exist.
+- Seeds are numeric (`double`) values.
+- Rebinding requires the seed to already exist.
 - Division by zero is a runtime error.
+- Top-level code only allows `globe` declarations and `ignite` calls.

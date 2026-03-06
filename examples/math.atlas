@@ -1,7 +1,11 @@
-let radius = 3;
-let pi = 3.14159;
-let area = pi * radius * radius;
-print area;
+globe area_lab {
+	seed radius <- 3;
+	seed pi <- 3.14159;
+	seed area <- pi * radius * radius;
+	echo area;
 
-area = area / 2;
-print area;
+	area <- area / 2;
+	echo area;
+}
+
+ignite area_lab;

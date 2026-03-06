@@ -1,6 +1,6 @@
 # atlas
 
-Atlas is a small interpreted programming language written in C.
+Atlas is a globe-driven interpreted programming language written in C.
 
 ## Project Structure
 
@@ -36,18 +36,24 @@ atlas/
 
 Current Atlas features:
 
+- Globe declarations with `globe name { ... }`
+- Globe execution with `ignite name;`
 - Numeric literals (stored as `double`)
-- Variable declaration with `let`
-- Assignment to existing variables
+- Seed declaration with `seed name <- expr;`
+- Seed rebinding with `name <- expr;`
 - Arithmetic expressions with precedence
-- `print` statement
+- `echo` statement
 
 Example:
 
 ```atlas
-let x = 40;
-let y = 2;
-print x + y;
+globe origin {
+	seed x <- 40;
+	seed y <- 2;
+	echo x + y;
+}
+
+ignite origin;
 ```
 
 ## Build

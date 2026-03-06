@@ -84,10 +84,14 @@ static Token identifier(Lexer *lexer) {
     {
         Token token = make_token(lexer, TOKEN_IDENTIFIER);
         if (token.lexeme != NULL) {
-            if (strcmp(token.lexeme, "let") == 0) {
-                token.type = TOKEN_LET;
-            } else if (strcmp(token.lexeme, "print") == 0) {
-                token.type = TOKEN_PRINT;
+            if (strcmp(token.lexeme, "globe") == 0) {
+                token.type = TOKEN_GLOBE;
+            } else if (strcmp(token.lexeme, "ignite") == 0) {
+                token.type = TOKEN_IGNITE;
+            } else if (strcmp(token.lexeme, "seed") == 0) {
+                token.type = TOKEN_SEED;
+            } else if (strcmp(token.lexeme, "echo") == 0) {
+                token.type = TOKEN_ECHO;
             }
         }
         return token;
@@ -158,14 +162,22 @@ Token lexer_next_token(Lexer *lexer) {
             return make_token(lexer, TOKEN_STAR);
         case '/':
             return make_token(lexer, TOKEN_SLASH);
-        case '=':
-            return make_token(lexer, TOKEN_EQUAL);
+        case '<':
+            if (peek(lexer) == '-') {
+                advance(lexer);
+                return make_token(lexer, TOKEN_ARROW);
+            }
+            return make_token(lexer, TOKEN_INVALID);
         case ';':
             return make_token(lexer, TOKEN_SEMICOLON);
         case '(':
             return make_token(lexer, TOKEN_LPAREN);
         case ')':
             return make_token(lexer, TOKEN_RPAREN);
+        case '{':
+            return make_token(lexer, TOKEN_LBRACE);
+        case '}':
+            return make_token(lexer, TOKEN_RBRACE);
         default:
             return make_token(lexer, TOKEN_INVALID);
     }

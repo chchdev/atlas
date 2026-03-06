@@ -1,3 +1,7 @@
-let x = 40;
-let y = 2;
-print x + y;
+globe origin {
+	seed x <- 40;
+	seed y <- 2;
+	echo x + y;
+}
+
+ignite origin;
