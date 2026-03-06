@@ -47,6 +47,14 @@ static int consume(Parser *parser, TokenType type, const char *message) {
     return 0;
 }
 
+static TokenType peek_next_type(const Parser *parser) {
+    Lexer snapshot = parser->lexer;
+    Token lookahead = lexer_next_token(&snapshot);
+    TokenType type = lookahead.type;
+    token_free(&lookahead);
+    return type;
+}
+
 static Expr *expression(Parser *parser);
 static Stmt *inner_statement(Parser *parser);
 
@@ -116,6 +124,7 @@ static Expr *primary(Parser *parser) {
     if (match(parser, TOKEN_CRAFT)) {
         char *mold_name;
         Expr *expr;
+        ExprList args;
 
         if (!consume(parser, TOKEN_LPAREN, "Expected '(' after 'craft'.")) {
             return NULL;
@@ -130,12 +139,21 @@ static Expr *primary(Parser *parser) {
             return NULL;
         }
 
-        if (!consume(parser, TOKEN_RPAREN, "Expected ')' after mold name.")) {
+        expr_list_init(&args);
+        if (match(parser, TOKEN_COMMA)) {
+            if (!parse_expression_list(parser, &args)) {
+                free(mold_name);
+                return NULL;
+            }
+        }
+
+        if (!consume(parser, TOKEN_RPAREN, "Expected ')' after craft arguments.")) {
             free(mold_name);
+            expr_list_free(&args);
             return NULL;
         }
 
-        expr = expr_craft_new(mold_name);
+        expr = expr_craft_new(mold_name, &args);
         free(mold_name);
         return expr;
     }
@@ -158,7 +176,7 @@ static Expr *postfix(Parser *parser) {
 
     while (expr != NULL) {
         if (match(parser, TOKEN_DOT)) {
-            char *field;
+            char *member;
             Expr *next;
 
             if (!consume(parser, TOKEN_IDENTIFIER, "Expected field name after '.'.")) {
@@ -166,15 +184,41 @@ static Expr *postfix(Parser *parser) {
                 return NULL;
             }
 
-            field = atlas_strdup(parser->previous.lexeme);
-            if (field == NULL) {
+            member = atlas_strdup(parser->previous.lexeme);
+            if (member == NULL) {
                 expr_free(expr);
-                parser_error(parser, "Out of memory while reading field name.");
+                parser_error(parser, "Out of memory while reading member name.");
                 return NULL;
             }
 
-            next = expr_field_new(expr, field);
-            free(field);
+            if (match(parser, TOKEN_LPAREN)) {
+                ExprList args;
+
+                if (!parse_expression_list(parser, &args)) {
+                    expr_free(expr);
+                    free(member);
+                    return NULL;
+                }
+
+                if (!consume(parser, TOKEN_RPAREN, "Expected ')' after method arguments.")) {
+                    expr_free(expr);
+                    expr_list_free(&args);
+                    free(member);
+                    return NULL;
+                }
+
+                next = expr_method_call_new(expr, member, &args);
+                free(member);
+                if (next == NULL) {
+                    expr_list_free(&args);
+                    return NULL;
+                }
+                expr = next;
+                continue;
+            }
+
+            next = expr_field_new(expr, member);
+            free(member);
             if (next == NULL) {
                 return NULL;
             }
@@ -453,7 +497,10 @@ static Stmt *orbit_statement(Parser *parser) {
 }
 
 static Stmt *assignment_or_expression(Parser *parser) {
-    if (match(parser, TOKEN_IDENTIFIER)) {
+    TokenType next_type = peek_next_type(parser);
+
+    if (check(parser, TOKEN_IDENTIFIER) && (next_type == TOKEN_ARROW || next_type == TOKEN_DOT)) {
+        match(parser, TOKEN_IDENTIFIER);
         char *name = atlas_strdup(parser->previous.lexeme);
 
         if (name == NULL) {
@@ -662,6 +709,7 @@ static Stmt *globe_declaration(Parser *parser) {
 
 static Stmt *mold_declaration(Parser *parser) {
     char *name;
+    char *parent_name = NULL;
     FieldInitList fields;
     Stmt *stmt;
 
@@ -675,7 +723,21 @@ static Stmt *mold_declaration(Parser *parser) {
         return NULL;
     }
 
+    if (match(parser, TOKEN_ARROW)) {
+        if (!consume(parser, TOKEN_IDENTIFIER, "Expected parent mold name after '<-'.")) {
+            free(name);
+            return NULL;
+        }
+        parent_name = atlas_strdup(parser->previous.lexeme);
+        if (parent_name == NULL) {
+            free(name);
+            parser_error(parser, "Out of memory while reading parent mold name.");
+            return NULL;
+        }
+    }
+
     if (!consume(parser, TOKEN_LBRACE, "Expected '{' to start mold body.")) {
+        free(parent_name);
         free(name);
         return NULL;
     }
@@ -687,12 +749,14 @@ static Stmt *mold_declaration(Parser *parser) {
 
         if (!consume(parser, TOKEN_SEED, "Mold fields must use 'seed'.")) {
             field_init_list_free(&fields);
+            free(parent_name);
             free(name);
             return NULL;
         }
 
         if (!consume(parser, TOKEN_IDENTIFIER, "Expected mold field name.")) {
             field_init_list_free(&fields);
+            free(parent_name);
             free(name);
             return NULL;
         }
@@ -701,6 +765,7 @@ static Stmt *mold_declaration(Parser *parser) {
             char *field_name = atlas_strdup(parser->previous.lexeme);
             if (field_name == NULL) {
                 field_init_list_free(&fields);
+                free(parent_name);
                 free(name);
                 parser_error(parser, "Out of memory while reading mold field name.");
                 return NULL;
@@ -709,6 +774,7 @@ static Stmt *mold_declaration(Parser *parser) {
             if (!consume(parser, TOKEN_ARROW, "Expected '<-' after mold field name.")) {
                 free(field_name);
                 field_init_list_free(&fields);
+                free(parent_name);
                 free(name);
                 return NULL;
             }
@@ -717,6 +783,7 @@ static Stmt *mold_declaration(Parser *parser) {
             if (value == NULL) {
                 free(field_name);
                 field_init_list_free(&fields);
+                free(parent_name);
                 free(name);
                 return NULL;
             }
@@ -725,6 +792,7 @@ static Stmt *mold_declaration(Parser *parser) {
                 expr_free(value);
                 free(field_name);
                 field_init_list_free(&fields);
+                free(parent_name);
                 free(name);
                 return NULL;
             }
@@ -733,6 +801,7 @@ static Stmt *mold_declaration(Parser *parser) {
                 expr_free(value);
                 free(field_name);
                 field_init_list_free(&fields);
+                free(parent_name);
                 free(name);
                 parser_error(parser, "Out of memory while storing mold field.");
                 return NULL;
@@ -744,11 +813,13 @@ static Stmt *mold_declaration(Parser *parser) {
 
     if (!consume(parser, TOKEN_RBRACE, "Expected '}' after mold body.")) {
         field_init_list_free(&fields);
+        free(parent_name);
         free(name);
         return NULL;
     }
 
-    stmt = stmt_mold_new(name, &fields);
+    stmt = stmt_mold_new(name, parent_name, &fields);
+    free(parent_name);
     free(name);
     if (stmt == NULL) {
         field_init_list_free(&fields);

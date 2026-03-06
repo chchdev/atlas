@@ -47,6 +47,10 @@ Current Atlas features:
 - Seed declaration with `seed name <- expr;`
 - Seed rebinding with `name <- expr;`
 - Object-oriented molds with `mold` and `craft`
+- Mold inheritance with `mold Child <- Parent`
+- Constructors via `<Mold>_construct(self, ...)`
+- Polymorphic method dispatch via `obj.method(...)`
+- Dictionary equivalents with `vault`, `stash`, `pull`, `has`, `drop`
 - Field access and mutation with `obj.field` and `obj.field <- ...`
 - Runtime type introspection with `kind(value)`
 - Type conversion with `as_number`, `as_bool`, and `as_text`
@@ -62,7 +66,10 @@ globe fuse(x, y) {
 
 globe origin(x, y, enabled) {
 	seed total <- fuse(x, y);
+	seed bag <- vault();
+	stash(bag, as_text(1), total);
 	echo total;
+	echo pull(bag, as_text(1));
 	return enabled;
 }
 

@@ -23,6 +23,14 @@ $expected = @(
     "object"
     "1"
     "text"
+    "dictionary"
+    "true"
+    "9001"
+    "true"
+    "false"
+    "77"
+    "9"
+    "2"
 )
 
 if ($output.Count -ne $expected.Count) {

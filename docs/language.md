@@ -101,6 +101,65 @@ b.watts <- b.watts + 8;
 echo b.watts;
 ```
 
+Inheritance:
+
+```atlas
+mold Animal {
+	seed name <- as_text(0);
+}
+
+mold Dog <- Animal {
+	seed power <- 0;
+}
+```
+
+Constructors:
+
+- Define constructor method as `<Mold>_construct(self, ...)`
+- It runs automatically on `craft(Mold, ...)`
+
+Polymorphism (override methods by mold name):
+
+```atlas
+globe Animal_voice(self) {
+	return 1;
+}
+
+globe Dog_voice(self) {
+	return 2;
+}
+
+globe Dog_construct(self, name, power) {
+	self.name <- name;
+	self.power <- power;
+	return 0;
+}
+
+seed pet <- craft(Dog, as_text(77), 9);
+echo pet.voice();
+```
+
+### Dictionaries
+
+Atlas provides dictionary-like dynamic maps through built-ins:
+
+- `vault()` creates a dictionary
+- `stash(dict, key, value)` inserts or updates
+- `pull(dict, key)` reads a value
+- `has(dict, key)` checks key existence
+- `drop(dict, key)` removes a key
+
+Keys are converted to text internally.
+
+```atlas
+seed bag <- vault();
+seed key <- as_text(42);
+stash(bag, key, 9001);
+echo has(bag, key);
+echo pull(bag, key);
+drop(bag, key);
+```
+
 ### Echo
 
 ```atlas

@@ -193,6 +193,26 @@ Expr *expr_call_new(const char *name, ExprList *args) {
     return expr;
 }
 
+Expr *expr_method_call_new(Expr *object, const char *method, ExprList *args) {
+    Expr *expr = (Expr *)calloc(1, sizeof(Expr));
+    if (expr == NULL) {
+        return NULL;
+    }
+    expr->type = EXPR_METHOD_CALL;
+    expr->as.method_call.object = object;
+    expr->as.method_call.method = atlas_strdup(method);
+    if (expr->as.method_call.method == NULL) {
+        expr_free(object);
+        free(expr);
+        return NULL;
+    }
+    expr->as.method_call.args = *args;
+    args->items = NULL;
+    args->count = 0;
+    args->capacity = 0;
+    return expr;
+}
+
 Expr *expr_field_new(Expr *object, const char *field) {
     Expr *expr = (Expr *)calloc(1, sizeof(Expr));
     if (expr == NULL) {
@@ -209,7 +229,7 @@ Expr *expr_field_new(Expr *object, const char *field) {
     return expr;
 }
 
-Expr *expr_craft_new(const char *mold_name) {
+Expr *expr_craft_new(const char *mold_name, ExprList *args) {
     Expr *expr = (Expr *)calloc(1, sizeof(Expr));
     if (expr == NULL) {
         return NULL;
@@ -220,6 +240,10 @@ Expr *expr_craft_new(const char *mold_name) {
         free(expr);
         return NULL;
     }
+    expr->as.craft.args = *args;
+    args->items = NULL;
+    args->count = 0;
+    args->capacity = 0;
     return expr;
 }
 
@@ -248,12 +272,24 @@ void expr_free(Expr *expr) {
             }
             free(expr->as.call.args.items);
             break;
+        case EXPR_METHOD_CALL:
+            expr_free(expr->as.method_call.object);
+            free(expr->as.method_call.method);
+            for (i = 0; i < expr->as.method_call.args.count; ++i) {
+                expr_free(expr->as.method_call.args.items[i]);
+            }
+            free(expr->as.method_call.args.items);
+            break;
         case EXPR_FIELD:
             expr_free(expr->as.field.object);
             free(expr->as.field.field);
             break;
         case EXPR_CRAFT:
             free(expr->as.craft.mold_name);
+            for (i = 0; i < expr->as.craft.args.count; ++i) {
+                expr_free(expr->as.craft.args.items[i]);
+            }
+            free(expr->as.craft.args.items);
             break;
         case EXPR_NUMBER:
         case EXPR_BOOL:
@@ -319,7 +355,7 @@ Stmt *stmt_globe_new(const char *name, NameList *params, Block *body) {
     return stmt;
 }
 
-Stmt *stmt_mold_new(const char *name, FieldInitList *fields) {
+Stmt *stmt_mold_new(const char *name, const char *parent_name, FieldInitList *fields) {
     Stmt *stmt = (Stmt *)calloc(1, sizeof(Stmt));
     if (stmt == NULL) {
         return NULL;
@@ -330,6 +366,15 @@ Stmt *stmt_mold_new(const char *name, FieldInitList *fields) {
     if (stmt->as.mold_stmt.name == NULL) {
         free(stmt);
         return NULL;
+    }
+
+    if (parent_name != NULL) {
+        stmt->as.mold_stmt.parent_name = atlas_strdup(parent_name);
+        if (stmt->as.mold_stmt.parent_name == NULL) {
+            free(stmt->as.mold_stmt.name);
+            free(stmt);
+            return NULL;
+        }
     }
 
     stmt->as.mold_stmt.fields = *fields;
@@ -491,6 +536,7 @@ void stmt_free(Stmt *stmt) {
             break;
         case STMT_MOLD:
             free(stmt->as.mold_stmt.name);
+            free(stmt->as.mold_stmt.parent_name);
             field_init_list_free(&stmt->as.mold_stmt.fields);
             break;
         case STMT_IGNITE:

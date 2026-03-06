@@ -26,6 +26,7 @@ typedef enum {
     EXPR_BINARY,
     EXPR_UNARY,
     EXPR_CALL,
+    EXPR_METHOD_CALL,
     EXPR_FIELD,
     EXPR_CRAFT
 } ExprType;
@@ -51,10 +52,16 @@ struct Expr {
         } call;
         struct {
             Expr *object;
+            char *method;
+            ExprList args;
+        } method_call;
+        struct {
+            Expr *object;
             char *field;
         } field;
         struct {
             char *mold_name;
+            ExprList args;
         } craft;
     } as;
 };
@@ -101,6 +108,7 @@ struct Stmt {
         } globe_stmt;
         struct {
             char *name;
+            char *parent_name;
             FieldInitList fields;
         } mold_stmt;
         struct {
@@ -144,12 +152,13 @@ Expr *expr_variable_new(const char *name);
 Expr *expr_binary_new(char op, Expr *left, Expr *right);
 Expr *expr_unary_new(char op, Expr *right);
 Expr *expr_call_new(const char *name, ExprList *args);
+Expr *expr_method_call_new(Expr *object, const char *method, ExprList *args);
 Expr *expr_field_new(Expr *object, const char *field);
-Expr *expr_craft_new(const char *mold_name);
+Expr *expr_craft_new(const char *mold_name, ExprList *args);
 void expr_free(Expr *expr);
 
 Stmt *stmt_globe_new(const char *name, NameList *params, Block *body);
-Stmt *stmt_mold_new(const char *name, FieldInitList *fields);
+Stmt *stmt_mold_new(const char *name, const char *parent_name, FieldInitList *fields);
 Stmt *stmt_ignite_new(const char *name, ExprList *args);
 Stmt *stmt_seed_new(const char *name, Expr *value);
 Stmt *stmt_assign_new(const char *name, Expr *value);

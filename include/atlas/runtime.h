@@ -9,10 +9,12 @@ typedef enum {
     VALUE_NUMBER,
     VALUE_BOOL,
     VALUE_TEXT,
-    VALUE_OBJECT
+    VALUE_OBJECT,
+    VALUE_DICT
 } ValueType;
 
 typedef struct AtlasObject AtlasObject;
+typedef struct AtlasDict AtlasDict;
 
 typedef struct {
     ValueType type;
@@ -21,6 +23,7 @@ typedef struct {
         int boolean;
         char *text;
         AtlasObject *object;
+        AtlasDict *dict;
     } as;
 } Value;
 
