@@ -368,6 +368,90 @@ static Stmt *return_statement(Parser *parser) {
     return stmt;
 }
 
+static Stmt *break_statement(Parser *parser) {
+    Stmt *stmt;
+    if (!consume(parser, TOKEN_SEMICOLON, "Expected ';' after break.")) {
+        return NULL;
+    }
+    stmt = stmt_break_new();
+    if (stmt == NULL) {
+        parser_error(parser, "Out of memory while creating break statement.");
+        return NULL;
+    }
+    return stmt;
+}
+
+static Stmt *continue_statement(Parser *parser) {
+    Stmt *stmt;
+    if (!consume(parser, TOKEN_SEMICOLON, "Expected ';' after continue.")) {
+        return NULL;
+    }
+    stmt = stmt_continue_new();
+    if (stmt == NULL) {
+        parser_error(parser, "Out of memory while creating continue statement.");
+        return NULL;
+    }
+    return stmt;
+}
+
+static Stmt *orbit_statement(Parser *parser) {
+    Expr *condition;
+    Block body;
+    Stmt *stmt;
+
+    if (!consume(parser, TOKEN_LPAREN, "Expected '(' after 'orbit'.")) {
+        return NULL;
+    }
+
+    condition = expression(parser);
+    if (condition == NULL) {
+        return NULL;
+    }
+
+    if (!consume(parser, TOKEN_RPAREN, "Expected ')' after orbit condition.")) {
+        expr_free(condition);
+        return NULL;
+    }
+
+    if (!consume(parser, TOKEN_LBRACE, "Expected '{' to start orbit body.")) {
+        expr_free(condition);
+        return NULL;
+    }
+
+    block_init(&body);
+    while (!check(parser, TOKEN_RBRACE) && !check(parser, TOKEN_EOF)) {
+        Stmt *inner = inner_statement(parser);
+        if (inner == NULL) {
+            expr_free(condition);
+            block_free(&body);
+            return NULL;
+        }
+        if (!block_push(&body, inner)) {
+            stmt_free(inner);
+            expr_free(condition);
+            block_free(&body);
+            parser_error(parser, "Out of memory while building orbit body.");
+            return NULL;
+        }
+    }
+
+    if (!consume(parser, TOKEN_RBRACE, "Expected '}' after orbit body.")) {
+        expr_free(condition);
+        block_free(&body);
+        return NULL;
+    }
+
+    stmt = stmt_orbit_new(condition, &body);
+    if (stmt == NULL) {
+        expr_free(condition);
+        block_free(&body);
+        parser_error(parser, "Out of memory while creating orbit statement.");
+        return NULL;
+    }
+
+    return stmt;
+}
+
 static Stmt *assignment_or_expression(Parser *parser) {
     if (match(parser, TOKEN_IDENTIFIER)) {
         char *name = atlas_strdup(parser->previous.lexeme);
@@ -482,6 +566,18 @@ static Stmt *inner_statement(Parser *parser) {
 
     if (match(parser, TOKEN_RETURN)) {
         return return_statement(parser);
+    }
+
+    if (match(parser, TOKEN_BREAK)) {
+        return break_statement(parser);
+    }
+
+    if (match(parser, TOKEN_CONTINUE)) {
+        return continue_statement(parser);
+    }
+
+    if (match(parser, TOKEN_ORBIT)) {
+        return orbit_statement(parser);
     }
 
     return assignment_or_expression(parser);

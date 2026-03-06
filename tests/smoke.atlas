@@ -9,10 +9,24 @@ globe combine(a, b) {
 
 globe arithmetic(a, b) {
 	seed unit <- craft(Beacon);
+	seed counter <- 3;
 	echo combine(a, b);
 	echo a - b;
 	echo a * b;
 	echo a / b;
+	orbit(counter) {
+		echo counter;
+		counter <- counter - 1;
+		continue;
+		echo 999;
+	}
+	seed stopper <- 5;
+	orbit(stopper) {
+		stopper <- stopper - 1;
+		echo stopper;
+		break;
+		counter <- counter - 1;
+	}
 	echo unit.active;
 	unit.watts <- unit.watts + 8;
 	echo unit.watts;

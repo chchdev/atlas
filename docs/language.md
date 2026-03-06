@@ -64,6 +64,23 @@ seed muted <- false;
 echo enabled;
 ```
 
+### Loops With `orbit`
+
+`orbit(condition) { ... }` repeats while the condition remains truthy.
+
+```atlas
+seed countdown <- 3;
+orbit(countdown) {
+	echo countdown;
+	countdown <- countdown - 1;
+}
+```
+
+Loop control keywords:
+
+- `break;` exits the nearest `orbit`
+- `continue;` skips to the next `orbit` iteration
+
 ### OO Design With Molds
 
 Define object blueprints with `mold`:
@@ -128,7 +145,6 @@ Operator precedence:
 
 ## Notes
 
-- Seeds are numeric (`double`) values.
 - Seeds can store number, boolean, text, and object values.
 - Rebinding requires the seed to already exist.
 - Division by zero is a runtime error.

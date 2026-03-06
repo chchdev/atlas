@@ -445,6 +445,39 @@ Stmt *stmt_return_new(Expr *value) {
     return stmt;
 }
 
+Stmt *stmt_orbit_new(Expr *condition, Block *body) {
+    Stmt *stmt = (Stmt *)calloc(1, sizeof(Stmt));
+    if (stmt == NULL) {
+        return NULL;
+    }
+
+    stmt->type = STMT_ORBIT;
+    stmt->as.orbit_stmt.condition = condition;
+    stmt->as.orbit_stmt.body = *body;
+    body->items = NULL;
+    body->count = 0;
+    body->capacity = 0;
+    return stmt;
+}
+
+Stmt *stmt_break_new(void) {
+    Stmt *stmt = (Stmt *)calloc(1, sizeof(Stmt));
+    if (stmt == NULL) {
+        return NULL;
+    }
+    stmt->type = STMT_BREAK;
+    return stmt;
+}
+
+Stmt *stmt_continue_new(void) {
+    Stmt *stmt = (Stmt *)calloc(1, sizeof(Stmt));
+    if (stmt == NULL) {
+        return NULL;
+    }
+    stmt->type = STMT_CONTINUE;
+    return stmt;
+}
+
 void stmt_free(Stmt *stmt) {
     if (stmt == NULL) {
         return;
@@ -485,6 +518,10 @@ void stmt_free(Stmt *stmt) {
             break;
         case STMT_RETURN:
             expr_free(stmt->as.return_stmt.value);
+            break;
+        case STMT_ORBIT:
+            expr_free(stmt->as.orbit_stmt.condition);
+            block_free(&stmt->as.orbit_stmt.body);
             break;
         default:
             break;

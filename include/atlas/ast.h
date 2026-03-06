@@ -85,7 +85,10 @@ typedef enum {
     STMT_FIELD_ASSIGN,
     STMT_ECHO,
     STMT_EXPR,
-    STMT_RETURN
+    STMT_RETURN,
+    STMT_ORBIT,
+    STMT_BREAK,
+    STMT_CONTINUE
 } StmtType;
 
 struct Stmt {
@@ -126,6 +129,10 @@ struct Stmt {
         struct {
             Expr *value;
         } return_stmt;
+        struct {
+            Expr *condition;
+            Block body;
+        } orbit_stmt;
     } as;
 };
 
@@ -150,6 +157,9 @@ Stmt *stmt_field_assign_new(const char *object_name, const char *field_name, Exp
 Stmt *stmt_echo_new(Expr *value);
 Stmt *stmt_expr_new(Expr *value);
 Stmt *stmt_return_new(Expr *value);
+Stmt *stmt_orbit_new(Expr *condition, Block *body);
+Stmt *stmt_break_new(void);
+Stmt *stmt_continue_new(void);
 void stmt_free(Stmt *stmt);
 
 void expr_list_init(ExprList *list);

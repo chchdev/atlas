@@ -40,6 +40,8 @@ Current Atlas features:
 - Globe parameters with `globe name(a, b)`
 - Globe execution with `ignite name(args...);`
 - Globe return values with `return expr;`
+- Loops with `orbit(condition) { ... }`
+- Loop control with `break;` and `continue;`
 - Boolean literals `true` and `false`
 - Numeric literals (stored as `double`)
 - Seed declaration with `seed name <- expr;`
@@ -101,6 +103,6 @@ powershell -ExecutionPolicy Bypass -File .\tests\run_tests.ps1
 ## Next Ideas
 
 - Add booleans and comparison operators
-- Add conditionals and loops
+- Add conditionals and comparison operators
 - Add functions
 - Add standard library modules

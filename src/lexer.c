@@ -100,6 +100,12 @@ static Token identifier(Lexer *lexer) {
                 token.type = TOKEN_CRAFT;
             } else if (strcmp(token.lexeme, "return") == 0) {
                 token.type = TOKEN_RETURN;
+            } else if (strcmp(token.lexeme, "orbit") == 0) {
+                token.type = TOKEN_ORBIT;
+            } else if (strcmp(token.lexeme, "break") == 0) {
+                token.type = TOKEN_BREAK;
+            } else if (strcmp(token.lexeme, "continue") == 0) {
+                token.type = TOKEN_CONTINUE;
             }
         }
         return token;

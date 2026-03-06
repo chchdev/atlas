@@ -654,6 +654,13 @@ static int assign_field(Runtime *runtime, Environment *env, const char *object_n
     return runtime_errorf(runtime, "Unknown object field", field_name);
 }
 
+typedef enum {
+    FLOW_NONE,
+    FLOW_RETURN,
+    FLOW_BREAK,
+    FLOW_CONTINUE
+} FlowSignal;
+
 static int execute_block(
     Runtime *runtime,
     const GlobeEntry *globes,
@@ -663,7 +670,7 @@ static int execute_block(
     const Block *block,
     Environment *env,
     int depth,
-    int *did_return,
+    FlowSignal *flow_signal,
     Value *return_value
 ) {
     size_t i;
@@ -760,10 +767,88 @@ static int execute_block(
                 if (!eval_expr(runtime, env, globes, globe_count, molds, mold_count, stmt->as.return_stmt.value, &value)) {
                     return 0;
                 }
-                *did_return = 1;
+                *flow_signal = FLOW_RETURN;
                 *return_value = value;
                 return 1;
             }
+
+            case STMT_ORBIT: {
+                size_t safety = 0;
+                for (;;) {
+                    Value cond_value;
+                    int cond_bool = 0;
+                    FlowSignal inner_flow = FLOW_NONE;
+
+                    if (!eval_expr(
+                            runtime,
+                            env,
+                            globes,
+                            globe_count,
+                            molds,
+                            mold_count,
+                            stmt->as.orbit_stmt.condition,
+                            &cond_value
+                        )) {
+                        return 0;
+                    }
+
+                    if (!value_to_bool(&cond_value, &cond_bool)) {
+                        value_free(&cond_value);
+                        return runtime_error(runtime, "Orbit condition could not be converted to boolean.");
+                    }
+
+                    value_free(&cond_value);
+                    if (!cond_bool) {
+                        break;
+                    }
+
+                    if (!execute_block(
+                            runtime,
+                            globes,
+                            globe_count,
+                            molds,
+                            mold_count,
+                            &stmt->as.orbit_stmt.body,
+                            env,
+                            depth + 1,
+                            &inner_flow,
+                            return_value
+                        )) {
+                        return 0;
+                    }
+
+                    if (inner_flow == FLOW_RETURN) {
+                        *flow_signal = FLOW_RETURN;
+                        return 1;
+                    }
+
+                    if (inner_flow == FLOW_BREAK) {
+                        break;
+                    }
+
+                    if (inner_flow == FLOW_CONTINUE) {
+                        safety++;
+                        if (safety > 1000000) {
+                            return runtime_error(runtime, "Orbit loop safety limit reached.");
+                        }
+                        continue;
+                    }
+
+                    safety++;
+                    if (safety > 1000000) {
+                        return runtime_error(runtime, "Orbit loop safety limit reached.");
+                    }
+                }
+                break;
+            }
+
+            case STMT_BREAK:
+                *flow_signal = FLOW_BREAK;
+                return 1;
+
+            case STMT_CONTINUE:
+                *flow_signal = FLOW_CONTINUE;
+                return 1;
 
             default:
                 return runtime_error(runtime, "Unsupported statement inside globe.");
@@ -788,7 +873,7 @@ static int execute_ignite(
     const GlobeEntry *globe = find_globe(globes, globe_count, name);
     Environment local_env;
     size_t i;
-    int did_return = 0;
+    FlowSignal flow_signal = FLOW_NONE;
     Value return_value;
 
     if (depth > 64) {
@@ -832,7 +917,7 @@ static int execute_ignite(
             &globe->stmt->as.globe_stmt.body,
             &local_env,
             depth + 1,
-            &did_return,
+            &flow_signal,
             &return_value
         )) {
         env_free(&local_env);
@@ -842,7 +927,12 @@ static int execute_ignite(
 
     env_free(&local_env);
 
-    if (did_return) {
+    if (flow_signal == FLOW_BREAK || flow_signal == FLOW_CONTINUE) {
+        value_free(&return_value);
+        return runtime_error(runtime, "break/continue can only be used inside orbit loops.");
+    }
+
+    if (flow_signal == FLOW_RETURN) {
         *out_result = return_value;
     } else {
         value_free(&return_value);
