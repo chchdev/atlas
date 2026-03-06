@@ -1,0 +1,7 @@
+let radius = 3;
+let pi = 3.14159;
+let area = pi * radius * radius;
+print area;
+
+area = area / 2;
+print area;
