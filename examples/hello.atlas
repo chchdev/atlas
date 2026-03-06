@@ -1,7 +1,11 @@
-globe origin {
-	seed x <- 40;
-	seed y <- 2;
-	echo x + y;
+globe fuse(x, y) {
+	return x + y;
 }
 
-ignite origin;
+globe origin(x, y, enabled) {
+	seed total <- fuse(x, y);
+	echo total;
+	return enabled;
+}
+
+ignite origin(40, 2, true);

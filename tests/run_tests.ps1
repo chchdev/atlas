@@ -14,7 +14,11 @@ $expected = @(
     "5"
     "50"
     "2"
-    "11"
+    "true"
+    "20"
+    "object"
+    "1"
+    "text"
 )
 
 if ($output.Count -ne $expected.Count) {

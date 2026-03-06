@@ -4,8 +4,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "atlas/util.h"
-
 static int is_at_end(const Lexer *lexer) {
     return lexer->current >= lexer->source_length;
 }
@@ -84,7 +82,11 @@ static Token identifier(Lexer *lexer) {
     {
         Token token = make_token(lexer, TOKEN_IDENTIFIER);
         if (token.lexeme != NULL) {
-            if (strcmp(token.lexeme, "globe") == 0) {
+            if (strcmp(token.lexeme, "true") == 0) {
+                token.type = TOKEN_TRUE;
+            } else if (strcmp(token.lexeme, "false") == 0) {
+                token.type = TOKEN_FALSE;
+            } else if (strcmp(token.lexeme, "globe") == 0) {
                 token.type = TOKEN_GLOBE;
             } else if (strcmp(token.lexeme, "ignite") == 0) {
                 token.type = TOKEN_IGNITE;
@@ -92,6 +94,12 @@ static Token identifier(Lexer *lexer) {
                 token.type = TOKEN_SEED;
             } else if (strcmp(token.lexeme, "echo") == 0) {
                 token.type = TOKEN_ECHO;
+            } else if (strcmp(token.lexeme, "mold") == 0) {
+                token.type = TOKEN_MOLD;
+            } else if (strcmp(token.lexeme, "craft") == 0) {
+                token.type = TOKEN_CRAFT;
+            } else if (strcmp(token.lexeme, "return") == 0) {
+                token.type = TOKEN_RETURN;
             }
         }
         return token;
@@ -170,6 +178,10 @@ Token lexer_next_token(Lexer *lexer) {
             return make_token(lexer, TOKEN_INVALID);
         case ';':
             return make_token(lexer, TOKEN_SEMICOLON);
+        case ',':
+            return make_token(lexer, TOKEN_COMMA);
+        case '.':
+            return make_token(lexer, TOKEN_DOT);
         case '(':
             return make_token(lexer, TOKEN_LPAREN);
         case ')':

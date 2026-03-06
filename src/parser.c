@@ -50,13 +50,94 @@ static int consume(Parser *parser, TokenType type, const char *message) {
 static Expr *expression(Parser *parser);
 static Stmt *inner_statement(Parser *parser);
 
+static int parse_identifier_list(Parser *parser, NameList *params) {
+    name_list_init(params);
+
+    if (check(parser, TOKEN_RPAREN)) {
+        return 1;
+    }
+
+    do {
+        if (!consume(parser, TOKEN_IDENTIFIER, "Expected parameter name.")) {
+            name_list_free(params);
+            return 0;
+        }
+        if (!name_list_push(params, parser->previous.lexeme)) {
+            name_list_free(params);
+            parser_error(parser, "Out of memory while storing parameter.");
+            return 0;
+        }
+    } while (match(parser, TOKEN_COMMA));
+
+    return 1;
+}
+
+static int parse_expression_list(Parser *parser, ExprList *args) {
+    expr_list_init(args);
+
+    if (check(parser, TOKEN_RPAREN)) {
+        return 1;
+    }
+
+    do {
+        Expr *arg = expression(parser);
+        if (arg == NULL) {
+            expr_list_free(args);
+            return 0;
+        }
+        if (!expr_list_push(args, arg)) {
+            expr_free(arg);
+            expr_list_free(args);
+            parser_error(parser, "Out of memory while storing argument.");
+            return 0;
+        }
+    } while (match(parser, TOKEN_COMMA));
+
+    return 1;
+}
+
 static Expr *primary(Parser *parser) {
     if (match(parser, TOKEN_NUMBER)) {
         return expr_number_new(parser->previous.number);
     }
 
+    if (match(parser, TOKEN_TRUE)) {
+        return expr_bool_new(1);
+    }
+
+    if (match(parser, TOKEN_FALSE)) {
+        return expr_bool_new(0);
+    }
+
     if (match(parser, TOKEN_IDENTIFIER)) {
         return expr_variable_new(parser->previous.lexeme);
+    }
+
+    if (match(parser, TOKEN_CRAFT)) {
+        char *mold_name;
+        Expr *expr;
+
+        if (!consume(parser, TOKEN_LPAREN, "Expected '(' after 'craft'.")) {
+            return NULL;
+        }
+        if (!consume(parser, TOKEN_IDENTIFIER, "Expected mold name in craft(...).")) {
+            return NULL;
+        }
+
+        mold_name = atlas_strdup(parser->previous.lexeme);
+        if (mold_name == NULL) {
+            parser_error(parser, "Out of memory while reading mold name.");
+            return NULL;
+        }
+
+        if (!consume(parser, TOKEN_RPAREN, "Expected ')' after mold name.")) {
+            free(mold_name);
+            return NULL;
+        }
+
+        expr = expr_craft_new(mold_name);
+        free(mold_name);
+        return expr;
     }
 
     if (match(parser, TOKEN_LPAREN)) {
@@ -72,6 +153,73 @@ static Expr *primary(Parser *parser) {
     return NULL;
 }
 
+static Expr *postfix(Parser *parser) {
+    Expr *expr = primary(parser);
+
+    while (expr != NULL) {
+        if (match(parser, TOKEN_DOT)) {
+            char *field;
+            Expr *next;
+
+            if (!consume(parser, TOKEN_IDENTIFIER, "Expected field name after '.'.")) {
+                expr_free(expr);
+                return NULL;
+            }
+
+            field = atlas_strdup(parser->previous.lexeme);
+            if (field == NULL) {
+                expr_free(expr);
+                parser_error(parser, "Out of memory while reading field name.");
+                return NULL;
+            }
+
+            next = expr_field_new(expr, field);
+            free(field);
+            if (next == NULL) {
+                return NULL;
+            }
+            expr = next;
+            continue;
+        }
+
+        if (match(parser, TOKEN_LPAREN)) {
+            ExprList args;
+            Expr *next;
+
+            if (expr->type != EXPR_VARIABLE) {
+                expr_free(expr);
+                parser_error(parser, "Only named call targets are supported.");
+                return NULL;
+            }
+
+            if (!parse_expression_list(parser, &args)) {
+                expr_free(expr);
+                return NULL;
+            }
+
+            if (!consume(parser, TOKEN_RPAREN, "Expected ')' after arguments.")) {
+                expr_free(expr);
+                expr_list_free(&args);
+                return NULL;
+            }
+
+            next = expr_call_new(expr->as.name, &args);
+            expr_free(expr);
+            if (next == NULL) {
+                expr_list_free(&args);
+                parser_error(parser, "Out of memory while building call expression.");
+                return NULL;
+            }
+            expr = next;
+            continue;
+        }
+
+        break;
+    }
+
+    return expr;
+}
+
 static Expr *unary(Parser *parser) {
     if (match(parser, TOKEN_MINUS)) {
         Expr *right = unary(parser);
@@ -81,7 +229,7 @@ static Expr *unary(Parser *parser) {
         return expr_unary_new('-', right);
     }
 
-    return primary(parser);
+    return postfix(parser);
 }
 
 static Expr *factor(Parser *parser) {
@@ -163,6 +311,7 @@ static Stmt *seed_statement(Parser *parser) {
 
 static Stmt *ignite_statement(Parser *parser) {
     char *name;
+    ExprList args;
     Stmt *stmt;
 
     if (!consume(parser, TOKEN_IDENTIFIER, "Expected globe name after 'ignite'.")) {
@@ -175,22 +324,100 @@ static Stmt *ignite_statement(Parser *parser) {
         return NULL;
     }
 
-    if (!consume(parser, TOKEN_SEMICOLON, "Expected ';' after ignite statement.")) {
+    if (!consume(parser, TOKEN_LPAREN, "Expected '(' after globe name in ignite statement.")) {
         free(name);
         return NULL;
     }
 
-    stmt = stmt_ignite_new(name);
+    if (!parse_expression_list(parser, &args)) {
+        free(name);
+        return NULL;
+    }
+
+    if (!consume(parser, TOKEN_RPAREN, "Expected ')' after ignite arguments.")) {
+        expr_list_free(&args);
+        free(name);
+        return NULL;
+    }
+
+    if (!consume(parser, TOKEN_SEMICOLON, "Expected ';' after ignite statement.")) {
+        expr_list_free(&args);
+        free(name);
+        return NULL;
+    }
+
+    stmt = stmt_ignite_new(name, &args);
     free(name);
+    return stmt;
+}
+
+static Stmt *return_statement(Parser *parser) {
+    Expr *value = expression(parser);
+    Stmt *stmt;
+
+    if (value == NULL) {
+        return NULL;
+    }
+
+    if (!consume(parser, TOKEN_SEMICOLON, "Expected ';' after return value.")) {
+        expr_free(value);
+        return NULL;
+    }
+
+    stmt = stmt_return_new(value);
     return stmt;
 }
 
 static Stmt *assignment_or_expression(Parser *parser) {
     if (match(parser, TOKEN_IDENTIFIER)) {
         char *name = atlas_strdup(parser->previous.lexeme);
+
         if (name == NULL) {
             parser_error(parser, "Out of memory while reading identifier.");
             return NULL;
+        }
+
+        if (match(parser, TOKEN_DOT)) {
+            char *field_name;
+            Expr *value;
+            Stmt *stmt;
+
+            if (!consume(parser, TOKEN_IDENTIFIER, "Expected field name after '.'.")) {
+                free(name);
+                return NULL;
+            }
+
+            field_name = atlas_strdup(parser->previous.lexeme);
+            if (field_name == NULL) {
+                free(name);
+                parser_error(parser, "Out of memory while reading field name.");
+                return NULL;
+            }
+
+            if (!consume(parser, TOKEN_ARROW, "Expected '<-' after field target.")) {
+                free(name);
+                free(field_name);
+                return NULL;
+            }
+
+            value = expression(parser);
+            if (value == NULL) {
+                free(name);
+                free(field_name);
+                return NULL;
+            }
+
+            if (!consume(parser, TOKEN_SEMICOLON, "Expected ';' after field assignment.")) {
+                expr_free(value);
+                free(name);
+                free(field_name);
+                return NULL;
+            }
+
+            stmt = stmt_field_assign_new(name, field_name, value);
+            free(name);
+            free(field_name);
+            return stmt;
         }
 
         if (match(parser, TOKEN_ARROW)) {
@@ -211,7 +438,7 @@ static Stmt *assignment_or_expression(Parser *parser) {
         }
 
         free(name);
-        parser_error(parser, "Expected '<-' after identifier.");
+        parser_error(parser, "Expected '<-' or '.field <-' after identifier.");
         return NULL;
     }
 
@@ -253,11 +480,16 @@ static Stmt *inner_statement(Parser *parser) {
         return ignite_statement(parser);
     }
 
+    if (match(parser, TOKEN_RETURN)) {
+        return return_statement(parser);
+    }
+
     return assignment_or_expression(parser);
 }
 
 static Stmt *globe_declaration(Parser *parser) {
     char *name;
+    NameList params;
     Block body;
     Stmt *stmt;
 
@@ -271,7 +503,24 @@ static Stmt *globe_declaration(Parser *parser) {
         return NULL;
     }
 
+    if (!consume(parser, TOKEN_LPAREN, "Expected '(' after globe name.")) {
+        free(name);
+        return NULL;
+    }
+
+    if (!parse_identifier_list(parser, &params)) {
+        free(name);
+        return NULL;
+    }
+
+    if (!consume(parser, TOKEN_RPAREN, "Expected ')' after parameter list.")) {
+        name_list_free(&params);
+        free(name);
+        return NULL;
+    }
+
     if (!consume(parser, TOKEN_LBRACE, "Expected '{' to start globe body.")) {
+        name_list_free(&params);
         free(name);
         return NULL;
     }
@@ -282,12 +531,14 @@ static Stmt *globe_declaration(Parser *parser) {
         Stmt *inner = inner_statement(parser);
         if (inner == NULL) {
             block_free(&body);
+            name_list_free(&params);
             free(name);
             return NULL;
         }
         if (!block_push(&body, inner)) {
             stmt_free(inner);
             block_free(&body);
+            name_list_free(&params);
             parser_error(parser, "Out of memory while building globe body.");
             free(name);
             return NULL;
@@ -296,15 +547,116 @@ static Stmt *globe_declaration(Parser *parser) {
 
     if (!consume(parser, TOKEN_RBRACE, "Expected '}' after globe body.")) {
         block_free(&body);
+        name_list_free(&params);
         free(name);
         return NULL;
     }
 
-    stmt = stmt_globe_new(name, &body);
+    stmt = stmt_globe_new(name, &params, &body);
     free(name);
     if (stmt == NULL) {
         block_free(&body);
+        name_list_free(&params);
         parser_error(parser, "Out of memory while building globe declaration.");
+        return NULL;
+    }
+
+    return stmt;
+}
+
+static Stmt *mold_declaration(Parser *parser) {
+    char *name;
+    FieldInitList fields;
+    Stmt *stmt;
+
+    if (!consume(parser, TOKEN_IDENTIFIER, "Expected mold name after 'mold'.")) {
+        return NULL;
+    }
+
+    name = atlas_strdup(parser->previous.lexeme);
+    if (name == NULL) {
+        parser_error(parser, "Out of memory while reading mold name.");
+        return NULL;
+    }
+
+    if (!consume(parser, TOKEN_LBRACE, "Expected '{' to start mold body.")) {
+        free(name);
+        return NULL;
+    }
+
+    field_init_list_init(&fields);
+
+    while (!check(parser, TOKEN_RBRACE) && !check(parser, TOKEN_EOF)) {
+        Expr *value;
+
+        if (!consume(parser, TOKEN_SEED, "Mold fields must use 'seed'.")) {
+            field_init_list_free(&fields);
+            free(name);
+            return NULL;
+        }
+
+        if (!consume(parser, TOKEN_IDENTIFIER, "Expected mold field name.")) {
+            field_init_list_free(&fields);
+            free(name);
+            return NULL;
+        }
+
+        {
+            char *field_name = atlas_strdup(parser->previous.lexeme);
+            if (field_name == NULL) {
+                field_init_list_free(&fields);
+                free(name);
+                parser_error(parser, "Out of memory while reading mold field name.");
+                return NULL;
+            }
+
+            if (!consume(parser, TOKEN_ARROW, "Expected '<-' after mold field name.")) {
+                free(field_name);
+                field_init_list_free(&fields);
+                free(name);
+                return NULL;
+            }
+
+            value = expression(parser);
+            if (value == NULL) {
+                free(field_name);
+                field_init_list_free(&fields);
+                free(name);
+                return NULL;
+            }
+
+            if (!consume(parser, TOKEN_SEMICOLON, "Expected ';' after mold field declaration.")) {
+                expr_free(value);
+                free(field_name);
+                field_init_list_free(&fields);
+                free(name);
+                return NULL;
+            }
+
+            if (!field_init_list_push(&fields, field_name, value)) {
+                expr_free(value);
+                free(field_name);
+                field_init_list_free(&fields);
+                free(name);
+                parser_error(parser, "Out of memory while storing mold field.");
+                return NULL;
+            }
+
+            free(field_name);
+        }
+    }
+
+    if (!consume(parser, TOKEN_RBRACE, "Expected '}' after mold body.")) {
+        field_init_list_free(&fields);
+        free(name);
+        return NULL;
+    }
+
+    stmt = stmt_mold_new(name, &fields);
+    free(name);
+    if (stmt == NULL) {
+        field_init_list_free(&fields);
+        parser_error(parser, "Out of memory while building mold declaration.");
         return NULL;
     }
 
@@ -316,11 +668,15 @@ static Stmt *top_level_statement(Parser *parser) {
         return globe_declaration(parser);
     }
 
+    if (match(parser, TOKEN_MOLD)) {
+        return mold_declaration(parser);
+    }
+
     if (match(parser, TOKEN_IGNITE)) {
         return ignite_statement(parser);
     }
 
-    parser_error(parser, "Top-level only allows 'globe' and 'ignite'.");
+    parser_error(parser, "Top-level only allows 'globe', 'mold', and 'ignite'.");
     return NULL;
 }
 

@@ -13,15 +13,30 @@ Atlas is globe-first: code runs only by igniting globes.
 Define a globe using braces:
 
 ```atlas
-globe origin {
-	echo 42;
+globe origin(x, y) {
+	echo x + y;
 }
 ```
 
 Run it with `ignite`:
 
 ```atlas
-ignite origin;
+ignite origin(20, 22);
+```
+
+### Returns
+
+Globes can return values:
+
+```atlas
+globe sum(a, b) {
+	return a + b;
+}
+
+globe caller() {
+	seed answer <- sum(20, 22);
+	echo answer;
+}
 ```
 
 ### Seeds (Variables)
@@ -39,11 +54,59 @@ Rebind an existing seed:
 x <- x + 1;
 ```
 
+### Booleans
+
+Atlas supports boolean literals:
+
+```atlas
+seed enabled <- true;
+seed muted <- false;
+echo enabled;
+```
+
+### OO Design With Molds
+
+Define object blueprints with `mold`:
+
+```atlas
+mold Beacon {
+	seed active <- true;
+	seed watts <- 12;
+}
+```
+
+Create object instances with `craft`:
+
+```atlas
+seed b <- craft(Beacon);
+echo b.active;
+b.watts <- b.watts + 8;
+echo b.watts;
+```
+
 ### Echo
 
 ```atlas
 echo x;
 echo x + y;
+```
+
+### Types And Conversion
+
+Introspect values:
+
+```atlas
+echo kind(42);        // number
+echo kind(true);      // boolean
+echo kind(craft(Beacon)); // object
+```
+
+Convert values:
+
+```atlas
+echo as_number(true);   // 1
+echo as_bool(0);        // false
+echo as_text(12.5);     // "12.5"
 ```
 
 ### Expressions
@@ -66,6 +129,7 @@ Operator precedence:
 ## Notes
 
 - Seeds are numeric (`double`) values.
+- Seeds can store number, boolean, text, and object values.
 - Rebinding requires the seed to already exist.
 - Division by zero is a runtime error.
-- Top-level code only allows `globe` declarations and `ignite` calls.
+- Top-level code allows `globe`, `mold`, and `ignite` declarations.

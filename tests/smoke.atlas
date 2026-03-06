@@ -1,12 +1,25 @@
-globe arithmetic {
-	seed a <- 10;
-	seed b <- 5;
-	echo a + b;
+mold Beacon {
+	seed active <- true;
+	seed watts <- 12;
+}
+
+globe combine(a, b) {
+	return a + b;
+}
+
+globe arithmetic(a, b) {
+	seed unit <- craft(Beacon);
+	echo combine(a, b);
 	echo a - b;
 	echo a * b;
 	echo a / b;
-	a <- a + 1;
-	echo a;
+	echo unit.active;
+	unit.watts <- unit.watts + 8;
+	echo unit.watts;
+	echo kind(unit);
+	echo as_number(unit.active);
+	echo kind(as_text(a));
+	return unit.watts;
 }
 
-ignite arithmetic;
+ignite arithmetic(10, 5);

@@ -1,11 +1,11 @@
-globe area_lab {
-	seed radius <- 3;
+globe area_lab(radius) {
 	seed pi <- 3.14159;
 	seed area <- pi * radius * radius;
 	echo area;
 
 	area <- area / 2;
 	echo area;
+	return area;
 }
 
-ignite area_lab;
+ignite area_lab(3);

@@ -37,23 +37,34 @@ atlas/
 Current Atlas features:
 
 - Globe declarations with `globe name { ... }`
-- Globe execution with `ignite name;`
+- Globe parameters with `globe name(a, b)`
+- Globe execution with `ignite name(args...);`
+- Globe return values with `return expr;`
+- Boolean literals `true` and `false`
 - Numeric literals (stored as `double`)
 - Seed declaration with `seed name <- expr;`
 - Seed rebinding with `name <- expr;`
+- Object-oriented molds with `mold` and `craft`
+- Field access and mutation with `obj.field` and `obj.field <- ...`
+- Runtime type introspection with `kind(value)`
+- Type conversion with `as_number`, `as_bool`, and `as_text`
 - Arithmetic expressions with precedence
 - `echo` statement
 
 Example:
 
 ```atlas
-globe origin {
-	seed x <- 40;
-	seed y <- 2;
-	echo x + y;
+globe fuse(x, y) {
+	return x + y;
 }
 
-ignite origin;
+globe origin(x, y, enabled) {
+	seed total <- fuse(x, y);
+	echo total;
+	return enabled;
+}
+
+ignite origin(40, 2, true);
 ```
 
 ## Build
